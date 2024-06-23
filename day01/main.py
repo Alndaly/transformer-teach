@@ -2,7 +2,6 @@ import torch
 import sentencepiece as spm
 from torch import nn
 from pathlib import Path
-from rich import print
 from datasets import load_dataset
 from torch.utils.data import Dataset
 
@@ -12,8 +11,8 @@ class MyData(Dataset):
         ds_raw = load_dataset('swaption2009/20k-en-zh-translation-pinyin-hsk')
         self.ds_raw = ds_raw['train']
     def __len__(self):
-        return len(self.ds_raw)
-    def __getitem__(self, index):
+        return int(len(self.ds_raw) / 5)
+    def __getitem__(self, index: int):
         group = self.ds_raw[index*5:index*5+4]['text']
         return {
             'source': group[0].replace('english: ', ''),
@@ -37,7 +36,7 @@ class PositionEncoding(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.max_seq_len = max_seq_len
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         # 创建一个位置编码矩阵，大小为(max_seq_len, d_model)
         pe = torch.zeros(self.max_seq_len, self.d_model)
         # (max_seq_len, d_model / 2)
