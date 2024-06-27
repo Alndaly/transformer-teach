@@ -14,6 +14,7 @@ class MultiHeadAttention(nn.Module):
         self.w_k = nn.Linear(self.d_model, self.q_k_zip_dim)
         self.w_v_r = nn.Linear(self.d_model, self.v_zip_dim)
         self.w_v_l = nn.Linear(self.v_zip_dim, self.d_model)
+        self.w_o = nn.Linear(d_model, d_model)
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
         # [batch_size, max_seq_len, d_model]
         query = self.w_q(q) # [batch_size, max_seq_len, q_k_zip_dim]
@@ -28,6 +29,7 @@ class MultiHeadAttention(nn.Module):
         attention_scores = attention_scores.softmax(dim=-1) # [batch_size, num_heads, max_seq_len, max_seq_len]
         data = attention_scores @ value # [batch_size, num_heads, max_seq_len, d_model/num_heads]
         data = data.transpose(0, 1).contiguous().view(q.shape[0], q.shape[1], -1) # [batch_size, max_seq_len, d_model]
+        data = self.w_o(data)
         return data
         
 class ResidualConnection(nn.Module):

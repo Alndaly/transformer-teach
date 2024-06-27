@@ -42,7 +42,7 @@ class PositionEncoding(nn.Module):
         self.max_seq_len = max_seq_len
         self.dropout = nn.Dropout(p=0.1)
         # 创建一个位置编码矩阵，大小为(max_seq_len, d_model)
-        pe = torch.zeros(self.max_seq_len, self.d_model)
+        pe = torch.zeros(max_seq_len, d_model)
         # (max_seq_len, d_model / 2)
         position = torch.arange(0, self.max_seq_len).unsqueeze(1).repeat(1, int(self.d_model / 2))
         # (max_seq_len, d_model / 2)
