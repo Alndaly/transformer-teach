@@ -2,28 +2,32 @@ import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
-from day01.main import get_or_build_tokenizer
-from day04.main import MyData, Transformer
+from model import get_or_build_tokenizer, Transformer
+from data import TranslateData
 
 source_tokenizer, target_tokenizer = get_or_build_tokenizer()
 
 writer = SummaryWriter()
 
 if __name__ == '__main__':
-    dataset = MyData()
+    # device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_built() and torch.backends.mps.is_available() else "cpu"
+    # print("Using device:", device)
+    # device = torch.device(device)
+    dataset = TranslateData()
     total_size = len(dataset)
     train_ds_size = int(0.9 * total_size)
-    train_dataset, val_dataset = random_split(MyData(), [train_ds_size, total_size-train_ds_size])
+    train_dataset, val_dataset = random_split(TranslateData(), [train_ds_size, total_size-train_ds_size])
     model = Transformer()
+    
     global_step = 0
     
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=target_tokenizer.piece_to_id('<pad>'), label_smoothing=0.1)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     
     # data = next(iter(train_dataloader))
     # outputs = model(data)
     
-    train_dataloader = DataLoader(train_dataset, batch_size=12, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True)
     
     
@@ -35,9 +39,10 @@ if __name__ == '__main__':
             global_step += 1
             encoder_output = model.encode(batch['encoder_input_token'])
             decoder_output = model.decode(encoder_output, batch['decoder_input_token'])
+            decoder_label = batch['decoder_label']
             outputs = model.project(decoder_output)
             optimizer.zero_grad()
-            loss = loss_fn(outputs.view(-1, target_tokenizer.get_piece_size()), batch['decoder_label'].view(-1))
+            loss = loss_fn(outputs.view(-1, target_tokenizer.get_piece_size()), decoder_label.view(-1))
             train_bar.set_postfix({"loss": f"{loss.item():6.3f}"})
             # Log the loss
             writer.add_scalar('train loss', loss.item(), global_step)

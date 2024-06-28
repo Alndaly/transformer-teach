@@ -63,19 +63,20 @@ class Transformer(nn.Module):
         self.decoder_layers = nn.ModuleList([TransformerDecoderLayer() for _ in range(6)])
         self.source_embedding = InputEmbedding(source_tokenizer.get_piece_size(), 512)
         self.target_embedding = InputEmbedding(target_tokenizer.get_piece_size(), 512)
-        self.position_encoding = PositionEncoding(512, 500)
+        self.encoder_position_encode = PositionEncoding(512, 500)
+        self.decoder_position_encode = PositionEncoding(512, 500)
         self.classifier = nn.Linear(512, target_tokenizer.get_piece_size())
     
     def encode(self, x: torch.Tensor):
         encoder_input_embedding = self.source_embedding(x)
-        encoder_position_encoding = self.position_encoding(encoder_input_embedding)
+        encoder_position_encoding = self.encoder_position_encode(encoder_input_embedding)
         for layer in self.encoder_layers:
             encoder_output = layer(encoder_position_encoding)
         return encoder_output
     
     def decode(self, encoder_output: torch.Tensor, x: torch.Tensor):
         decoder_input_embedding = self.target_embedding(x)
-        decoder_position_encoding = self.position_encoding(decoder_input_embedding)
+        decoder_position_encoding = self.decoder_position_encode(decoder_input_embedding)
         for layer in self.decoder_layers:
             decoder_output = layer(decoder_position_encoding, encoder_output)
         return decoder_output
