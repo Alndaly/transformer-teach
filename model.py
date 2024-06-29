@@ -1,6 +1,9 @@
 import math
 import torch
 from torch import nn
+from data import get_or_build_tokenizer
+
+source_tokenizer, target_tokenizer = get_or_build_tokenizer()
 
 class InputEmbedding(nn.Module):
     def __init__(self, vocab_size: int, embedding_dim: int = 512) -> None:
@@ -30,6 +33,11 @@ class PositionEncoding(nn.Module):
         div_term = (10000 ** (torch.arange(0, self.d_model, 2) / self.d_model)).unsqueeze(0).repeat(self.max_seq_len, 1) 
         pe[:, 0::2] = torch.sin(position / div_term)
         pe[:, 1::2] = torch.cos(position / div_term)
+        # div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)) # (d_model / 2)
+        # # Apply sine to even indices
+        # pe[:, 0::2] = torch.sin(position * div_term) # sin(position * (10000 ** (2i / d_model))
+        # # Apply cosine to odd indices
+        # pe[:, 1::2] = torch.cos(position * div_term) # cos(position * (10000 ** (2i / d_model))
         # 适配batch_size
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
@@ -50,20 +58,20 @@ class MultiHeadAttention(nn.Module):
         assert d_model % num_heads == 0, "d_model is not divisible by h"
         self.q_k_zip_dim = q_k_zip_dim
         self.v_zip_dim = v_zip_dim
-        # self.w_q = nn.Linear(self.d_model, self.q_k_zip_dim)
-        # self.w_k = nn.Linear(self.d_model, self.q_k_zip_dim)
-        # self.w_v_r = nn.Linear(self.d_model, self.v_zip_dim)
-        # self.w_v_l = nn.Linear(self.v_zip_dim, self.d_model)
-        self.w_q = nn.Linear(self.d_model, self.d_model)
-        self.w_k = nn.Linear(self.d_model, self.d_model)
-        self.w_v = nn.Linear(self.d_model, self.d_model)
+        self.w_q = nn.Linear(self.d_model, self.q_k_zip_dim)
+        self.w_k = nn.Linear(self.d_model, self.q_k_zip_dim)
+        self.w_v_r = nn.Linear(self.d_model, self.v_zip_dim)
+        self.w_v_l = nn.Linear(self.v_zip_dim, self.d_model)
+        # self.w_q = nn.Linear(self.d_model, self.d_model)
+        # self.w_k = nn.Linear(self.d_model, self.d_model)
+        # self.w_v = nn.Linear(self.d_model, self.d_model)
         self.w_o = nn.Linear(d_model, d_model)
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
         # [batch_size, max_seq_len, d_model]
         query = self.w_q(q) # [batch_size, max_seq_len, q_k_zip_dim]
         key = self.w_k(k) # [batch_size, max_seq_len, q_k_zip_dim]
-        # value = self.w_v_l(self.w_v_r(v))  # [batch_size, max_seq_len, d_model]
-        value = self.w_v(v)  # [batch_size, max_seq_len, d_model]
+        value = self.w_v_l(self.w_v_r(v))  # [batch_size, max_seq_len, d_model]
+        # value = self.w_v(v)  # [batch_size, max_seq_len, d_model]
         # 拆分多头
         query = query.view(query.shape[0], query.shape[1], self.num_heads, -1).transpose(1, 2) # [batch_size, num_heads, max_seq_len, q_k_zip_dim/num_heads]
         key = key.view(key.shape[0], key.shape[1], self.num_heads, -1).transpose(1, 2) # [batch_size, num_heads, max_seq_len, q_k_zip_dim/num_heads]
@@ -80,8 +88,11 @@ class ResidualConnection(nn.Module):
     def __init__(self):
         super().__init__()
         self.dropout = nn.Dropout(0.1)
+        self.layer_norm = nn.LayerNorm(512, eps=10**-6)
     def forward(self, x: torch.tensor, sublayer: nn.Module):
-        return x + self.dropout(sublayer(x))
+        x = x + self.dropout(sublayer(x))
+        x = self.layer_norm(x)
+        return x
     
 class FeedForwardNetWork(nn.Module):
     def __init__(self, input_dim: int, output_dim: int):
@@ -102,13 +113,10 @@ class TransformerEncoderLayer(nn.Module):
         self.attention_layer = MultiHeadAttention(512, 8, 128, 128)
         self.residual_connection = nn.ModuleList([ResidualConnection() for i in range(2)])
         self.feed_forward_network = FeedForwardNetWork(512, 512)
-        self.layer_norm = nn.LayerNorm(512, eps=10**-6)
     def forward(self, x: torch.Tensor):
         # 位置编码
         x = self.residual_connection[0](x, lambda x: self.attention_layer(x, x, x))
-        x = self.layer_norm(x)
         x = self.residual_connection[1](x, self.feed_forward_network)
-        x = self.layer_norm(x)
         return x    
 
 class MaskedMultiHeadAttention(nn.Module):
@@ -118,20 +126,20 @@ class MaskedMultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.q_k_zip_dim = q_k_zip_dim
         self.v_zip_dim = v_zip_dim
-        # self.w_q = nn.Linear(d_model, q_k_zip_dim)
-        # self.w_k = nn.Linear(d_model, q_k_zip_dim)
-        # self.w_v_r = nn.Linear(d_model, v_zip_dim)
-        # self.w_v_l = nn.Linear(v_zip_dim, d_model)
-        self.w_q = nn.Linear(self.d_model, self.d_model)
-        self.w_k = nn.Linear(self.d_model, self.d_model)
-        self.w_v = nn.Linear(self.d_model, self.d_model)
+        self.w_q = nn.Linear(d_model, q_k_zip_dim)
+        self.w_k = nn.Linear(d_model, q_k_zip_dim)
+        self.w_v_r = nn.Linear(d_model, v_zip_dim)
+        self.w_v_l = nn.Linear(v_zip_dim, d_model)
+        # self.w_q = nn.Linear(self.d_model, self.d_model)
+        # self.w_k = nn.Linear(self.d_model, self.d_model)
+        # self.w_v = nn.Linear(self.d_model, self.d_model)
         self.w_o = nn.Linear(d_model, d_model)
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
         # [batch_size, max_seq_len, d_model]
         query = self.w_q(q) # [batch_size, max_seq_len, q_k_zip_dim]
         key = self.w_k(k) # [batch_size, max_seq_len, q_k_zip_dim]
-        # value = self.w_v_l(self.w_v_r(v)) # [batch_size, max_seq_len, d_model]
-        value = self.w_v(v)
+        value = self.w_v_l(self.w_v_r(v)) # [batch_size, max_seq_len, d_model]
+        # value = self.w_v(v)
         # 多头分割
         query = query.view(query.shape[0], query.shape[1], self.num_heads, -1).transpose(1, 2) # [batch_size, num_heads, max_seq_len, q_k_zip_dim/num_heads]
         key = key.view(key.shape[0], key.shape[1], self.num_heads, -1).transpose(1, 2) # [batch_size, num_heads, max_seq_len, q_k_zip_dim/num_heads]
@@ -155,11 +163,8 @@ class TransformerDecoderLayer(nn.Module):
         self.layer_norm = nn.LayerNorm(512)
     def forward(self, x, encoder_output):
         x = self.residual_connection[0](x, lambda x: self.masked_attention_layer(x, x, x))
-        x = self.layer_norm(x)
         x = self.residual_connection[1](x, lambda x: self.attention_layer(x, encoder_output, encoder_output))
-        x = self.layer_norm(x)
         x = self.residual_connection[2](x, self.feed_forward_network)
-        x = self.layer_norm(x)
         return x
 
 
@@ -191,5 +196,5 @@ class Transformer(nn.Module):
         
     def project(self, decoder_output: torch.Tensor):
         output = self.classifier(decoder_output)
-        output = torch.softmax(output, dim=-1)
+        # output = torch.softmax(output, dim=-1)
         return output

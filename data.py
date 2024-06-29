@@ -94,7 +94,7 @@ class TranslateData(Dataset):
         )
         
         # False 表示遮蔽，True 表示不遮蔽
-        decoder_mask = (decoder_input_token == target_tokenizer.piece_to_id('<pad>')) | (casual_mask(decoder_input_token.shape[0]) == 0) == False
+        decoder_mask = (decoder_input_token == target_tokenizer.piece_to_id('<pad>')) | (causal_mask(decoder_input_token.shape[0]) == 0) == False
         
         return {
             'encoder_input_token': encoder_input_token, # [max_seq_len]
@@ -105,6 +105,6 @@ class TranslateData(Dataset):
             'target_text': target_text
         }
 
-def casual_mask(size):
+def causal_mask(size):
     mask = torch.tril(torch.ones(size, size, dtype=torch.int))
     return mask
