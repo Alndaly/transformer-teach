@@ -2,24 +2,21 @@ import torch
 import math
 import sentencepiece as spm
 from torch import nn
+from rich import print
 from pathlib import Path
 from datasets import load_dataset
-from torch.utils.data import Dataset
+from itertools import groupby
 
-class SpmData(Dataset):
-    def __init__(self):
-        super().__init__()
-        ds_raw = load_dataset('swaption2009/20k-en-zh-translation-pinyin-hsk')
-        self.ds_raw = ds_raw['train']
-    def __len__(self):
-        return int(len(self.ds_raw) / 5)
-    def __getitem__(self, index: int):
-        group = self.ds_raw[index*5:index*5+4]['text']
-        return {
-            'source': group[0].replace('english: ', ''),
-            'target': group[2].replace('mandarin: ', ''),
-            'pinyin': group[3].replace('pinyin: ', ''),
+def get_all_sentences():
+    ds_raw = load_dataset('swaption2009/20k-en-zh-translation-pinyin-hsk', split='train')['text']
+    data = [list(group) for key, group in groupby(ds_raw, lambda x: x == '--') if not key]
+    for item in data:
+        yield {
+            'source': item[0].replace('english: ', ''),
+            'target': item[2].replace('mandarin: ', ''),
+            'pinyin': item[3].replace('pinyin: ', '')
         }
+    
 
 class InputEmbedding(nn.Module):
     def __init__(self, vocab_size: int, embedding_dim: int = 512) -> None:
@@ -62,7 +59,7 @@ class PositionEncoding(nn.Module):
 def get_or_build_tokenizer():
     if not Path.exists(Path('source_tokenizer.model')):
         spm.SentencePieceTrainer.train(
-            sentence_iterator=map(lambda x: x['source'], iter(SpmData())),
+            sentence_iterator=map(lambda x: x['source'], get_all_sentences()),
             model_type='BPE',
             vocab_size=20000,
             character_coverage=1,
@@ -71,7 +68,7 @@ def get_or_build_tokenizer():
         )
     if not Path.exists(Path('target_tokenizer.model')):
         spm.SentencePieceTrainer.train(
-            sentence_iterator=map(lambda x: x['target'], iter(SpmData())),
+            sentence_iterator=map(lambda x: x['target'], get_all_sentences()),
             model_type='BPE',
             vocab_size=10000,
             character_coverage=0.9995,
@@ -81,10 +78,6 @@ def get_or_build_tokenizer():
     source_tokenizer = spm.SentencePieceProcessor(model_file='source_tokenizer.model')
     target_tokenizer = spm.SentencePieceProcessor(model_file='target_tokenizer.model')
     return source_tokenizer, target_tokenizer
-
-
-
-
 
 if __name__ == '__main__':
     source_tokenizer, _ = get_or_build_tokenizer()

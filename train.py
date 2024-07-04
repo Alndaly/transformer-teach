@@ -33,47 +33,47 @@ if __name__ == '__main__':
     
     for epoch in range(20):
         
-        # model.train()
-        # train_bar = tqdm(train_dataloader, desc=f'Training')
-        # for batch in train_bar:
-        #     global_step += 1
-        #     encoder_output = model.encode(batch['encoder_input_token'])
-        #     decoder_output = model.decode(encoder_output, batch['decoder_input_token'])
-        #     decoder_label = batch['decoder_label']
-        #     outputs = model.project(decoder_output)
-        #     optimizer.zero_grad()
-        #     loss = loss_fn(outputs.view(-1, target_tokenizer.get_piece_size()), decoder_label.view(-1))
-        #     train_bar.set_postfix({"loss": f"{loss.item():6.3f}"})
-        #     # Log the loss
-        #     writer.add_scalar('train loss', loss.item(), global_step)
-        #     writer.flush()
-        #     loss.backward()
-        #     optimizer.step()
+        model.train()
+        train_bar = tqdm(train_dataloader, desc=f'Training')
+        for batch in train_bar:
+            global_step += 1
+            encoder_output = model.encode(batch['encoder_input_token'])
+            decoder_output = model.decode(encoder_output, batch['decoder_input_token'])
+            decoder_label = batch['decoder_label']
+            outputs = model.project(decoder_output)
+            optimizer.zero_grad()
+            loss = loss_fn(outputs.view(-1, target_tokenizer.get_piece_size()), decoder_label.view(-1))
+            train_bar.set_postfix({"loss": f"{loss.item():6.3f}"})
+            # Log the loss
+            writer.add_scalar('train loss', loss.item(), global_step)
+            writer.flush()
+            loss.backward()
+            optimizer.step()
             
-        model.eval()
-        validate_bar = tqdm(val_dataloader, desc=f'Validating')
-        with torch.no_grad():
-            for batch in validate_bar:
-                sos_token = target_tokenizer.piece_to_id('<s>')
-                eos_token = target_tokenizer.piece_to_id('</s>')
-                decoder_input = torch.empty(1, 1).fill_(sos_token).type_as(batch['encoder_input_token'])
-                while True:
-                    if decoder_input.size(1) == 500:
-                        break
-                    encoder_output = model.encode(batch['encoder_input_token'])
-                    decoder_output = model.decode(encoder_output, decoder_input)
-                    output = model.project(decoder_output[:, -1])
-                    max_vals, max_indices = torch.max(output, dim=-1)
-                    decoder_input = torch.cat((decoder_input, max_vals.type_as(batch['encoder_input_token']).unsqueeze(0)), dim=1)
-                    if max_indices == eos_token:
-                        break
-                predict_token = decoder_input.squeeze(0).tolist()
-                predict_text = target_tokenizer.decode(predict_token)
-                source_token = batch['encoder_input_token'][0].detach().tolist()
-                target_token = batch['decoder_input_token'][0].detach().tolist()
-                source_txt = source_tokenizer.decode(source_token)
-                target_text = target_tokenizer.decode(target_token)
-                # predict_text = target_tokenizer.decode(encoder_output.argmax(dim=-1))
-                print(f'source: {source_txt}')
-                print(f'target: {target_text}')
-                print(f'predict: {predict_text}')
+        # model.eval()
+        # validate_bar = tqdm(val_dataloader, desc=f'Validating')
+        # with torch.no_grad():
+        #     for batch in validate_bar:
+        #         sos_token = target_tokenizer.piece_to_id('<s>')
+        #         eos_token = target_tokenizer.piece_to_id('</s>')
+        #         decoder_input = torch.empty(1, 1).fill_(sos_token).type_as(batch['encoder_input_token'])
+        #         while True:
+        #             if decoder_input.size(1) == 500:
+        #                 break
+        #             encoder_output = model.encode(batch['encoder_input_token'])
+        #             decoder_output = model.decode(encoder_output, decoder_input)
+        #             output = model.project(decoder_output[:, -1])
+        #             max_vals, max_indices = torch.max(output, dim=-1)
+        #             decoder_input = torch.cat((decoder_input, max_vals.type_as(batch['encoder_input_token']).unsqueeze(0)), dim=1)
+        #             if max_indices == eos_token:
+        #                 break
+        #         predict_token = decoder_input.squeeze(0).tolist()
+        #         predict_text = target_tokenizer.decode(predict_token)
+        #         source_token = batch['encoder_input_token'][0].detach().tolist()
+        #         target_token = batch['decoder_input_token'][0].detach().tolist()
+        #         source_txt = source_tokenizer.decode(source_token)
+        #         target_text = target_tokenizer.decode(target_token)
+        #         # predict_text = target_tokenizer.decode(encoder_output.argmax(dim=-1))
+        #         print(f'source: {source_txt}')
+        #         print(f'target: {target_text}')
+        #         print(f'predict: {predict_text}')
